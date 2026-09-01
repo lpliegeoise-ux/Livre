@@ -306,11 +306,14 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
       startRecognition();
       return;
     }
+
+    // One tap after the revealed word prepares the next trick immediately.
     locked=false;
     resetSpokenCommand();
     wordEl.textContent="";
-    stage.style.display="none";
-    cover.style.display="block";
+    try{ if(rec) rec.abort(); }catch(e){}
+    running=false;
+    startRecognition();
   });
 
   addEventListener("resize",fitWord);

@@ -14,7 +14,7 @@ html,body{margin:0;width:100%;height:100%;min-height:100dvh;overflow:hidden;back
 body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
 #cover{position:fixed;top:0;right:0;bottom:0;left:0;width:100vw;height:100dvh;background:#000;z-index:10;cursor:pointer}
 #stage{position:fixed;top:0;right:0;bottom:0;left:0;width:100vw;height:100dvh;background:#000;display:none;z-index:20;color:#777}
-#word{position:absolute;left:4vw;right:4vw;top:max(4px,env(safe-area-inset-top));text-align:center;font-weight:500;white-space:nowrap;line-height:1;opacity:1;font-size:88px;color:#aaa}
+#word{position:absolute;left:4vw;right:4vw;top:max(4px,env(safe-area-inset-top));text-align:center;font-weight:500;white-space:nowrap;line-height:1;opacity:1;font-size:88px;color:#b0b0b0}
 </style>
 </head>
 <body>
@@ -80,7 +80,7 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
     "dix huit":18,"dix neuf":19,"vingt":20,"vingt et un":21
   };
   const ordinals = {
-    "premier":1,"premiere":1,"deuxieme":2,"second":2,"seconde":2,
+    "premier":1,"premiers":1,"premiere":1,"premieres":1,"deuxieme":2,"deuxiemes":2,"second":2,"seconde":2,
     "troisieme":3,"quatrieme":4,"cinquieme":5,"sixieme":6,"septieme":7,
     "huitieme":8,"neuvieme":9,"dixieme":10,
     "onzieme":11,"douzieme":12,"treizieme":13,"quatorzieme":14,
@@ -237,14 +237,21 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
     running=false;
   }
 
-  async function startRecognition(){
-    // Fullscreen must be requested directly from the first user tap.
-    await enterFullscreen();
-
+  function startRecognition(){
+    // Show only the black stage immediately.
     cover.style.display="none";
     stage.style.display="block";
     wordEl.textContent="";
     resetSpokenCommand();
+
+    // Request fullscreen, but DO NOT await it: on Android, waiting here can lose
+    // the original user gesture before the microphone is started.
+    try{
+      const el=document.documentElement;
+      if(!document.fullscreenElement && el.requestFullscreen){
+        el.requestFullscreen({navigationUI:"hide"}).catch(()=>{});
+      }
+    }catch(e){}
 
     if(!SR){
       wordEl.textContent="CHROME";
@@ -252,22 +259,23 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
       return;
     }
 
-    if(running) return;
+    try{ if(rec) rec.abort(); }catch(e){}
+    running=false;
 
     rec=new SR();
     rec.lang="fr-FR";
 
-    // Keep one recognition session open. No visible recorder is created by the page.
-    // We also avoid rapid stop/restart loops, which can trigger Android/Samsung notices.
-    rec.continuous=true;
-    rec.interimResults=false;
-    rec.maxAlternatives=3;
+    // Android/Chrome is generally more reliable with one utterance at a time.
+    // "ligne 2 premier mot" is a complete utterance, so continuous mode is not needed.
+    rec.continuous=false;
+    rec.interimResults=true;
+    rec.maxAlternatives=5;
 
     rec.onresult=e=>{
       for(let i=e.resultIndex;i<e.results.length;i++){
-        if(!e.results[i].isFinal) continue;
         for(let a=0;a<e.results[i].length;a++){
-          handleSpeech(e.results[i][a].transcript);
+          const heard=e.results[i][a].transcript;
+          handleSpeech(heard);
           if(locked) return;
         }
       }
@@ -275,33 +283,13 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
 
     rec.onend=()=>{
       running=false;
-      // Android/Chrome can stop SpeechRecognition automatically after a short silence.
-      // Restart it while the black listening screen is active.
-      if(!locked && stage.style.display==="block"){
-        setTimeout(()=>{
-          if(!locked && stage.style.display==="block" && !running){
-            try{
-              rec.start();
-              running=true;
-            }catch(e){}
-          }
-        },500);
-      }
+      // No automatic loop here: this avoids the repeated Samsung/Android
+      // "recording paused" notification.
     };
 
     rec.onerror=e=>{
       running=false;
-      if(!locked && stage.style.display==="block" &&
-         e.error!=="not-allowed" && e.error!=="service-not-allowed"){
-        setTimeout(()=>{
-          if(!locked && stage.style.display==="block" && !running){
-            try{
-              rec.start();
-              running=true;
-            }catch(err){}
-          }
-        },700);
-      }
+      // Keep the screen black. No visible error message during performance.
     };
 
     try{
@@ -310,10 +298,14 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
     }catch(e){}
   }
 
-  cover.addEventListener("click",startRecognition);
+  cover.addEventListener("pointerup",startRecognition,{once:true});
 
   stage.addEventListener("click",()=>{
-    if(!locked) return;
+    if(!locked){
+      // Silent retry if Android stopped listening before the command was spoken.
+      startRecognition();
+      return;
+    }
     locked=false;
     resetSpokenCommand();
     wordEl.textContent="";

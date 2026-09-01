@@ -14,7 +14,7 @@ html,body{margin:0;width:100%;height:100%;min-height:100dvh;overflow:hidden;back
 body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
 #cover{position:fixed;top:0;right:0;bottom:0;left:0;width:100vw;height:100dvh;background:#000;z-index:10;cursor:pointer}
 #stage{position:fixed;top:0;right:0;bottom:0;left:0;width:100vw;height:100dvh;background:#000;display:none;z-index:20;color:#777}
-#word{position:absolute;left:4vw;right:4vw;top:max(4px,env(safe-area-inset-top));text-align:center;font-weight:500;white-space:nowrap;line-height:1;opacity:.72;font-size:88px;color:#777}
+#word{position:absolute;left:4vw;right:4vw;top:max(4px,env(safe-area-inset-top));text-align:center;font-weight:500;white-space:nowrap;line-height:1;opacity:1;font-size:88px;color:#aaa}
 </style>
 </head>
 <body>
@@ -103,6 +103,14 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
 
   function parseCommand(text){
     const t = normalize(text).replace(/-/g," ");
+
+    // Very common short forms:
+    // "ligne 2 mot 1", "ligne 2 premier mot", "ligne deux premier mot".
+    let quick = t.match(/^ligne\s+(.+?)\s+mot\s+(.+)$/);
+    if(quick) return {page:null, line:readNumber(quick[1]), word:readNumber(quick[2])};
+
+    quick = t.match(/^ligne\s+(.+?)\s+(.+?)\s+mot$/);
+    if(quick) return {page:null, line:readNumber(quick[1]), word:readNumber(quick[2])};
 
     // Ex. "page 12 ligne 5 mot 4"
     let m = t.match(/\bpage\s+(.+?)\s+ligne\s+(.+?)\s+(?:mot|mots)\s+(.+)$/);
@@ -267,12 +275,33 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
 
     rec.onend=()=>{
       running=false;
-      // Do not immediately restart the microphone automatically.
-      // This avoids repeated Android "recording paused" notifications.
+      // Android/Chrome can stop SpeechRecognition automatically after a short silence.
+      // Restart it while the black listening screen is active.
+      if(!locked && stage.style.display==="block"){
+        setTimeout(()=>{
+          if(!locked && stage.style.display==="block" && !running){
+            try{
+              rec.start();
+              running=true;
+            }catch(e){}
+          }
+        },500);
+      }
     };
 
-    rec.onerror=()=>{
+    rec.onerror=e=>{
       running=false;
+      if(!locked && stage.style.display==="block" &&
+         e.error!=="not-allowed" && e.error!=="service-not-allowed"){
+        setTimeout(()=>{
+          if(!locked && stage.style.display==="block" && !running){
+            try{
+              rec.start();
+              running=true;
+            }catch(err){}
+          }
+        },700);
+      }
     };
 
     try{

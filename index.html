@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Livre</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif}
+#cover{position:fixed;inset:0;background:#fff;z-index:10;cursor:pointer}
+#paper{position:absolute;inset:0;background:#fff}
+#cursor{position:absolute;left:7vw;top:18vh;width:2px;height:3.2vh;background:#111;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+#keyboard{position:absolute;left:0;right:0;bottom:0;padding:8px 7px calc(10px + env(safe-area-inset-bottom));background:#d5d8dd;display:grid;gap:7px;user-select:none}
+.row{display:flex;justify-content:center;gap:6px}
+.key{height:43px;min-width:29px;padding:0 8px;border-radius:5px;background:#fff;box-shadow:0 1px 1px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:17px;color:#111}
+.wide{min-width:64px}.space{flex:1;max-width:210px}
+#stage{position:fixed;inset:0;background:#050505;display:none;z-index:20;color:#fff}
+#word{position:absolute;left:5vw;right:5vw;bottom:14vh;text-align:center;font-weight:500;white-space:nowrap;line-height:1;opacity:.92;font-size:88px}
+</style>
+</head>
+<body>
+<div id="cover" aria-label="Touchez pour commencer">
+  <div id="paper"><div id="cursor"></div></div>
+  <div id="keyboard" aria-hidden="true">
+    <div class="row"><div class="key">A</div><div class="key">Z</div><div class="key">E</div><div class="key">R</div><div class="key">T</div><div class="key">Y</div><div class="key">U</div><div class="key">I</div><div class="key">O</div><div class="key">P</div></div>
+    <div class="row"><div class="key">Q</div><div class="key">S</div><div class="key">D</div><div class="key">F</div><div class="key">G</div><div class="key">H</div><div class="key">J</div><div class="key">K</div><div class="key">L</div><div class="key">M</div></div>
+    <div class="row"><div class="key wide">⇧</div><div class="key">W</div><div class="key">X</div><div class="key">C</div><div class="key">V</div><div class="key">B</div><div class="key">N</div><div class="key wide">⌫</div></div>
+    <div class="row"><div class="key wide">123</div><div class="key space"></div><div class="key wide">↵</div></div>
+  </div>
+</div>
+
+<div id="stage"><div id="word"></div></div>
+
+<script>
+(() => {
+  const BOOK_LINES = [
+    "Quelques années après les ravages de la",
+    "Seconde Guerre mondiale, cette zone",
+    "reculée, abritant une population",
+    "vieillissante, s’était progressivement",
+    "dépeuplée, livrant les bâtisses aux morsures",
+    "du temps. Aujourd’hui, seules subsistaient",
+    "des ruines qu’une association, « Zéro onde »,",
+    "financée en majorité par le conseil régional",
+    "du Grand Est, avait entrepris de réhabiliter.",
+    "Emmitouflée dans son épaisse écharpe en",
+    "laine, sa chapka kaki enfoncée jusqu’aux",
+    "oreilles, Véra Clétorne regagnait la base que",
+    "les membres de l’association, dont elle",
+    "faisait partie, avaient aménagée dans ce qui",
+    "avait autrefois tenu lieu de boulangerie. Des",
+    "ouvriers avaient confectionné une toiture",
+    "temporaire, faite de planches et de bâches",
+    "en plastique, et reconstruit les murs",
+    "entourant l’ancien four. Il faisait aussi froid",
+    "dedans que dehors, mais, au moins, on était",
+    "au sec et protégé du vent. Là, on avait"
+  ];
+
+  const cover = document.getElementById("cover");
+  const stage = document.getElementById("stage");
+  const wordEl = document.getElementById("word");
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  let rec = null;
+  let running = false;
+  let locked = false;
+
+  function normalize(s){
+    return s.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .replace(/[’']/g," ")
+      .replace(/[^a-z0-9\s-]/g," ")
+      .replace(/\s+/g," ").trim();
+  }
+
+  function splitBookWords(line){
+    const matches = line.match(/[A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+(?:[’'][A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]+)*/g) || [];
+    return matches.filter(w => w.replace(/[^A-Za-zÀ-ÖØ-öø-ÿŒœÆæ]/g,"").length >= 2);
+  }
+
+  const simple = {
+    "zero":0,"un":1,"une":1,"deux":2,"trois":3,"quatre":4,"cinq":5,
+    "six":6,"sept":7,"huit":8,"neuf":9,"dix":10,"onze":11,"douze":12,
+    "treize":13,"quatorze":14,"quinze":15,"seize":16,"dix sept":17,
+    "dix huit":18,"dix neuf":19,"vingt":20,"vingt et un":21
+  };
+  const ordinals = {
+    "premier":1,"premiere":1,"deuxieme":2,"second":2,"seconde":2,
+    "troisieme":3,"quatrieme":4,"cinquieme":5,"sixieme":6,"septieme":7,
+    "huitieme":8,"neuvieme":9,"dixieme":10,
+    "onzieme":11,"douzieme":12,"treizieme":13,"quatorzieme":14,
+    "quinzieme":15,"seizieme":16,"dix septieme":17,"dix huitieme":18,
+    "dix neuvieme":19,"vingtieme":20,"vingt et unieme":21
+  };
+
+  function readNumber(s){
+    s = normalize(s).replace(/-/g," ").trim();
+    const d = s.match(/\b(\d{1,2})\b/);
+    if(d) return Number(d[1]);
+    if(simple[s] !== undefined) return simple[s];
+    if(ordinals[s] !== undefined) return ordinals[s];
+
+    for(const [k,v] of Object.entries({...simple,...ordinals})){
+      if(new RegExp("\\b"+k.replace(/ /g,"\\s+")+"\\b").test(s)) return v;
+    }
+    return null;
+  }
+
+  function parseCommand(text){
+    const t = normalize(text).replace(/-/g," ");
+    let m = t.match(/\bligne\s+(.+?)\s+(?:mot|mots)\s+(.+)$/);
+    if(m) return {line:readNumber(m[1]), word:readNumber(m[2])};
+
+    m = t.match(/\b(?:mot|mots)\s+(.+?)\s+ligne\s+(.+)$/);
+    if(m) return {line:readNumber(m[2]), word:readNumber(m[1])};
+
+    // Ex. "cinquième ligne, quatrième mot"
+    let line=null, word=null;
+    for(const [k,v] of Object.entries(ordinals)){
+      const kk=k.replace(/ /g,"\\s+");
+      if(new RegExp("\\b"+kk+"\\s+ligne\\b").test(t) || new RegExp("\\bligne\\s+"+kk+"\\b").test(t)) line=v;
+      if(new RegExp("\\b"+kk+"\\s+mot\\b").test(t) || new RegExp("\\bmot\\s+"+kk+"\\b").test(t)) word=v;
+    }
+    return {line,word};
+  }
+
+  function fitWord(){
+    if(!wordEl.textContent) return;
+    let size=Math.min(110,Math.floor(innerWidth*0.22));
+    wordEl.style.fontSize=size+"px";
+    const max=innerWidth*0.90;
+    while(wordEl.scrollWidth>max && size>18){
+      size-=2;
+      wordEl.style.fontSize=size+"px";
+    }
+  }
+
+  function reveal(lineNo,wordNo){
+    if(locked || !Number.isInteger(lineNo) || !Number.isInteger(wordNo)) return;
+    if(lineNo<1 || lineNo>BOOK_LINES.length) return;
+    const ws=splitBookWords(BOOK_LINES[lineNo-1]);
+    if(wordNo<1 || wordNo>ws.length) return;
+
+    locked=true;
+    wordEl.textContent=ws[wordNo-1].toUpperCase();
+    fitWord();
+    try{if(rec)rec.stop()}catch(e){}
+    running=false;
+  }
+
+  function startRecognition(){
+    cover.style.display="none";
+    stage.style.display="block";
+    wordEl.textContent="";
+
+    if(!SR){
+      wordEl.textContent="CHROME";
+      fitWord();
+      return;
+    }
+    if(running) return;
+
+    rec=new SR();
+    rec.lang="fr-FR";
+    rec.continuous=true;
+    rec.interimResults=true;
+    rec.maxAlternatives=3;
+
+    rec.onresult=e=>{
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        for(let a=0;a<e.results[i].length;a++){
+          const c=parseCommand(e.results[i][a].transcript);
+          if(c.line && c.word){reveal(c.line,c.word);return;}
+        }
+      }
+    };
+    rec.onend=()=>{
+      running=false;
+      if(!locked && stage.style.display==="block") setTimeout(startRecognition,250);
+    };
+    rec.onerror=()=>{running=false;};
+
+    try{rec.start();running=true}catch(e){}
+  }
+
+  cover.addEventListener("click",startRecognition);
+
+  stage.addEventListener("click",()=>{
+    if(!locked) return;
+    locked=false;
+    wordEl.textContent="";
+    stage.style.display="none";
+    cover.style.display="block";
+  });
+
+  addEventListener("resize",fitWord);
+})();
+</script>
+</body>
+</html>

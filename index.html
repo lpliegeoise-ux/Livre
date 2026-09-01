@@ -3,34 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Livre</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff;font-family:Arial,Helvetica,sans-serif}
-#cover{position:fixed;inset:0;background:#fff;z-index:10;cursor:pointer}
-#paper{position:absolute;inset:0;background:#fff}
-#cursor{position:absolute;left:7vw;top:18vh;width:2px;height:3.2vh;background:#111;animation:blink 1s step-end infinite}
-@keyframes blink{50%{opacity:0}}
-#keyboard{position:absolute;left:0;right:0;bottom:0;padding:8px 7px calc(10px + env(safe-area-inset-bottom));background:#d5d8dd;display:grid;gap:7px;user-select:none}
-.row{display:flex;justify-content:center;gap:6px}
-.key{height:43px;min-width:29px;padding:0 8px;border-radius:5px;background:#fff;box-shadow:0 1px 1px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:17px;color:#111}
-.wide{min-width:64px}.space{flex:1;max-width:210px}
-#stage{position:fixed;inset:0;background:#050505;display:none;z-index:20;color:#fff}
-#word{position:absolute;left:5vw;right:5vw;bottom:14vh;text-align:center;font-weight:500;white-space:nowrap;line-height:1;opacity:.92;font-size:88px}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:Arial,Helvetica,sans-serif}
+#cover{position:fixed;inset:0;background:#000;z-index:10;cursor:pointer}
+#stage{position:fixed;inset:0;background:#000;display:none;z-index:20;color:#777}
+#word{position:absolute;left:4vw;right:4vw;top:max(8px,env(safe-area-inset-top));text-align:center;font-weight:500;white-space:nowrap;line-height:1;opacity:.72;font-size:88px;color:#777}
 </style>
 </head>
 <body>
-<div id="cover" aria-label="Touchez pour commencer">
-  <div id="paper"><div id="cursor"></div></div>
-  <div id="keyboard" aria-hidden="true">
-    <div class="row"><div class="key">A</div><div class="key">Z</div><div class="key">E</div><div class="key">R</div><div class="key">T</div><div class="key">Y</div><div class="key">U</div><div class="key">I</div><div class="key">O</div><div class="key">P</div></div>
-    <div class="row"><div class="key">Q</div><div class="key">S</div><div class="key">D</div><div class="key">F</div><div class="key">G</div><div class="key">H</div><div class="key">J</div><div class="key">K</div><div class="key">L</div><div class="key">M</div></div>
-    <div class="row"><div class="key wide">⇧</div><div class="key">W</div><div class="key">X</div><div class="key">C</div><div class="key">V</div><div class="key">B</div><div class="key">N</div><div class="key wide">⌫</div></div>
-    <div class="row"><div class="key wide">123</div><div class="key space"></div><div class="key wide">↵</div></div>
-  </div>
-</div>
+<div id="cover" aria-label="Touchez pour commencer"></div>
 
 <div id="stage"><div id="word"></div></div>
 
@@ -112,20 +98,39 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff;font-f
 
   function parseCommand(text){
     const t = normalize(text).replace(/-/g," ");
-    let m = t.match(/\bligne\s+(.+?)\s+(?:mot|mots)\s+(.+)$/);
-    if(m) return {line:readNumber(m[1]), word:readNumber(m[2])};
+
+    // Ex. "page 12 ligne 5 mot 4"
+    let m = t.match(/\bpage\s+(.+?)\s+ligne\s+(.+?)\s+(?:mot|mots)\s+(.+)$/);
+    if(m) return {page:readNumber(m[1]), line:readNumber(m[2]), word:readNumber(m[3])};
+
+    m = t.match(/\bligne\s+(.+?)\s+(?:mot|mots)\s+(.+)$/);
+    if(m) return {page:null, line:readNumber(m[1]), word:readNumber(m[2])};
 
     m = t.match(/\b(?:mot|mots)\s+(.+?)\s+ligne\s+(.+)$/);
-    if(m) return {line:readNumber(m[2]), word:readNumber(m[1])};
+    if(m) return {page:null, line:readNumber(m[2]), word:readNumber(m[1])};
+
+    let page=null, line=null, word=null;
+
+    const pageMatch = t.match(/\bpage\s+([^ ]+(?:\s+et\s+un)?)/);
+    if(pageMatch) page=readNumber(pageMatch[1]);
 
     // Ex. "cinquième ligne, quatrième mot"
-    let line=null, word=null;
     for(const [k,v] of Object.entries(ordinals)){
       const kk=k.replace(/ /g,"\\s+");
       if(new RegExp("\\b"+kk+"\\s+ligne\\b").test(t) || new RegExp("\\bligne\\s+"+kk+"\\b").test(t)) line=v;
       if(new RegExp("\\b"+kk+"\\s+mot\\b").test(t) || new RegExp("\\bmot\\s+"+kk+"\\b").test(t)) word=v;
     }
-    return {line,word};
+
+    if(line===null){
+      const lm=t.match(/\bligne\s+([^ ]+(?:\s+et\s+un)?)/);
+      if(lm) line=readNumber(lm[1]);
+    }
+    if(word===null){
+      const wm=t.match(/\b(?:mot|mots)\s+([^ ]+(?:\s+et\s+un)?)/);
+      if(wm) word=readNumber(wm[1]);
+    }
+
+    return {page,line,word};
   }
 
   function fitWord(){

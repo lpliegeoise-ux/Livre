@@ -152,9 +152,9 @@ body{position:fixed;inset:0;background:#000;overscroll-behavior:none}
 
   function fitWord(){
     if(!wordEl.textContent) return;
-    let size=Math.min(180,Math.floor(innerWidth*0.38));
+    let size=Math.min(320,Math.floor(innerWidth*0.76));
     wordEl.style.fontSize=size+"px";
-    const max=innerWidth*0.92;
+    const max=innerWidth*0.96;
     while(wordEl.scrollWidth>max && size>18){
       size-=2;
       wordEl.style.fontSize=size+"px";
